@@ -3,27 +3,48 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export async function proxy(request: NextRequest) {
-  const token = await getToken({ req: request });
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const isDev = process.env.NODE_ENV !== "production";
+  const apiOrigin = process.env.NEXT_PUBLIC_API_URL
+    ? new URL(process.env.NEXT_PUBLIC_API_URL).origin
+    : "";
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    // Radix and motion components use inline style attributes.
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://img.freepik.com https://res.cloudinary.com https://api.dicebear.com",
+    "font-src 'self'",
+    `connect-src 'self' ${apiOrigin}${isDev ? " ws: wss:" : ""}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    ...(!isDev ? ["upgrade-insecure-requests"] : []),
+  ].join("; ");
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  let response: NextResponse;
   const { pathname } = request.nextUrl;
-
-  const userRole = (token?.role as string)?.toUpperCase();
-  const isAdmin = userRole === "ADMIN";
-  const isGuest = !token;
-
-  // Example: Block guests from /dashboard
-  if (isGuest && pathname.startsWith("/dashboard")) {
-    const callbackUrl = encodeURIComponent(pathname);
-    return NextResponse.redirect(
-      new URL(`/login?callbackUrl=${callbackUrl}`, request.url),
-    );
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+    const token = await getToken({ req: request });
+    if (!token || token.error === "RefreshAccessTokenError") {
+      const callbackUrl = encodeURIComponent(pathname);
+      response = NextResponse.redirect(
+        new URL(`/login?callbackUrl=${callbackUrl}`, request.url),
+      );
+    } else if (token.role?.toUpperCase() !== "ADMIN") {
+      response = NextResponse.redirect(new URL("/", request.url));
+    } else {
+      response = NextResponse.next({ request: { headers: requestHeaders } });
+    }
+  } else {
+    response = NextResponse.next({ request: { headers: requestHeaders } });
   }
-
-  // Example: Block non-admins from /dashboard
-  if (!isAdmin && pathname.startsWith("/dashboard")) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  return NextResponse.next();
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
 }
 
 export const config = {

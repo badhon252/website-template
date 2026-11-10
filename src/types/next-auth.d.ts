@@ -11,7 +11,6 @@ declare module "next-auth" {
       role: "admin" | "user" | string;
     };
     accessToken: string;
-    refreshToken: string;
     error?: "RefreshAccessTokenError";
   }
 

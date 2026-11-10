@@ -26,21 +26,21 @@ A production-ready, opinionated **Next.js 16** template with a clean feature-dri
 
 | Category         | Library / Tool                                 | Version        |
 | ---------------- | ---------------------------------------------- | -------------- |
-| Framework        | [Next.js](https://nextjs.org/)                 | 16.1.4         |
-| Language         | TypeScript                                     | ^5             |
+| Framework        | [Next.js](https://nextjs.org/)                 | 16.4.6         |
+| Language         | TypeScript                                     | 6.0.3          |
 | Styling          | Tailwind CSS                                   | ^4             |
 | UI Components    | [Shadcn UI](https://ui.shadcn.com/) + Radix UI | Latest         |
-| Icons            | Lucide React                                   | ^0.553.0       |
+| Icons            | Lucide React                                   | 1.71.0       |
 | Authentication   | [NextAuth.js](https://next-auth.js.org/)       | ^4.24          |
-| Data Fetching    | Axios + TanStack Query                         | ^1.13 / ^5.90  |
-| Forms            | React Hook Form + Zod                          | ^7.66 / ^3.25  |
+| Data Fetching    | Axios + TanStack Query                         | 1.21 / 5.107  |
+| Forms            | React Hook Form + Zod                          | 7.91 / 4.6  |
 | State Management | Zustand                                        | ^5.0           |
-| Rich Text Editor | Tiptap                                         | ^3.17          |
-| Animations       | Framer Motion                                  | ^12            |
+| Rich Text Editor | Tiptap                                         | 3.33          |
+| Animations       | Framer Motion                                  | 14.11          |
 | Notifications    | Sonner                                         | ^2.0           |
 | Testing          | Jest + Testing Library                         | ^30            |
 | Linting          | ESLint + Prettier                              | ^9 / ^3        |
-| Commit Hooks     | Husky + Lint-staged + Commitlint               | ^8 / ^16 / ^20 |
+| Commit Hooks     | Husky + Lint-staged + Commitlint               | 9 / 17 / 21 |
 
 ---
 
@@ -104,8 +104,8 @@ src/
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or pnpm
+- Node.js 22.22.2 (see `.nvmrc`)
+- npm 10.9.7 (the authoritative lockfile is `package-lock.json`)
 
 ### 1. Clone the repository
 
@@ -117,7 +117,7 @@ cd <project-folder>
 ### 2. Install dependencies
 
 ```bash
-npm install
+npm ci --ignore-scripts
 ```
 
 ### 3. Set up environment variables
@@ -149,7 +149,7 @@ Copy `example.env.local` to `.env.local` and fill in the following:
 | `NEXTAUTH_URL`           | ✅       | The canonical URL of your deployed app (e.g. `http://localhost:3000` for local)            |
 | `NEXT_PUBLIC_SOCKET_URL` | ⬜       | Optional WebSocket server URL                                                              |
 
-> **Security**: Never commit your `.env.local` file. It is already listed in `.gitignore`.
+> **Security**: Never commit your `.env.local` file. Environment files are ignored by `.gitignore`. Generate your own secret; example values must never be reused.
 
 ---
 
@@ -162,8 +162,8 @@ Authentication is handled via **NextAuth.js v4** using its **Credentials Provide
 1. The user submits their email and password.
 2. NextAuth calls your backend `POST /auth/login` endpoint.
 3. On success, the user object and `accessToken` are stored in a JWT session.
-4. The JWT is automatically refreshed when it expires (1 hour default), via `POST /auth/refresh-access-token`.
-5. If the refresh fails, the session is destroyed and the user is signed out.
+4. The backend access token is automatically refreshed when its configured expiry is reached (1 hour default), via `POST /auth/refresh-access-token`.
+5. If refresh fails, the session exposes an error and no access token. The API client signs the user out on a subsequent 401 response.
 
 ### Session Shape
 
@@ -178,7 +178,7 @@ session.user = {
   role: string;     // e.g. "ADMIN" | "USER"
 };
 session.accessToken  = string;
-session.refreshToken = string;
+// Refresh tokens stay in the encrypted, httpOnly session cookie.
 ```
 
 ### Accessing the Session
@@ -197,12 +197,10 @@ export default function MyComponent() {
 
 **Server-side (in a Server Component or API Route):**
 
-```tsx
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-
-const session = await getServerSession(authOptions);
-```
+Before adding protected server handlers, extract the existing NextAuth options
+into a shared server-only module and pass them to `getServerSession`. The auth
+route currently exports only `GET` and `POST`. Check permissions inside each
+protected handler as well as in the navigation proxy.
 
 ---
 
@@ -340,7 +338,7 @@ export const useExampleStore = create<ExampleState>((set) => ({
 
 ## 🛡️ Routing & Middleware
 
-The `src/proxy.ts` file is a **Next.js Middleware** that runs at the edge before any page renders. It handles **Role-Based Access Control (RBAC)**.
+The `src/proxy.ts` file is a **Next.js Proxy** that runs on the server before matching pages render. It handles **Role-Based Access Control (RBAC)**.
 
 ### Current Rules
 
@@ -395,15 +393,15 @@ All primitive UI components come from **Shadcn UI** and live in `src/components/
 | `Avatar`        | User avatar with fallback                            |
 | `Dropdown Menu` | Context/dropdown menus                               |
 | `Accordion`     | Collapsible accordion panels                         |
-| And more...     | Run `npx shadcn add <component>` to add more         |
+| And more...     | Run `npm exec -- shadcn add <component>` to add more         |
 
 ### Adding a New Shadcn Component
 
 ```bash
-npx shadcn add <component-name>
+npm exec -- shadcn add <component-name>
 # e.g.
-npx shadcn add sheet
-npx shadcn add calendar
+npm exec -- shadcn add sheet
+npm exec -- shadcn add calendar
 ```
 
 ---
@@ -512,3 +510,15 @@ This launches an interactive CLI to guide you through writing a valid commit mes
 ## 📄 License
 
 This project is a starter template. You are free to use, modify, and distribute it.
+
+## Security and dependency maintenance
+
+Read [SECURITY.md](SECURITY.md) for the threat model, verification evidence,
+remaining development-tool advisory, and deployment requirements.
+
+Use `nvm use` and `npm ci --ignore-scripts` for reproducible installs. Dependency
+lifecycle scripts are blocked in `.npmrc`; no dependency scripts are approved.
+To install the reviewed local Git hooks explicitly, run `npm run prepare`.
+
+Run `npm run security:audit` and `npm run security:signatures` before releases.
+The GitHub Actions workflow also runs the frozen install, checks, and build.
